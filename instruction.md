@@ -38,3 +38,18 @@ sqlite> SELECT * FROM users;
 sqlite> SELECT name FROM users WHERE id = 2;
 Bob
 sqlite> .exit
+
+## Constraints
+- You may **not** use any existing database library (SQLite, LevelDB, RocksDB, etc.)
+- You may use only the standard library of your language + basic system calls
+- The database file must survive process restarts
+- Your solution must be deterministic
+
+## Scoring
+The verifier will:
+1. Compile / build your project
+2. Run a series of SQL scripts against your binary
+3. Check correctness of results and persistence
+4. Give partial credit for correct CREATE + INSERT + simple SELECT
+
+Time budget for a strong engineer: 8–14 hours.
