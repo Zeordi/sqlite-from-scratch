@@ -61,8 +61,8 @@ run_sql() {
 }
 
 assert_contains() {
-    # $1 = output file, $2 = expected substring, $3 = label
-    if grep -qF -- "$2" "$1"; then
+    # $1 = output file, $2 = expected exact row line, $3 = label
+    if grep -qFx -- "$2" "$1"; then
         echo "PASS: $3"
         return 0
     else
@@ -118,7 +118,7 @@ SELECT * FROM a;
 SELECT * FROM b;" > "$WORK/out4.txt"
 
 if assert_contains "$WORK/out4.txt" "10" "test4: table a" \
-  && assert_contains "$WORK/out4.txt" "hello" "test4: table b"; then
+   && assert_contains "$WORK/out4.txt" "10|hello" "test4: table b"; then
     add_score 0.25
 fi
 

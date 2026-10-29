@@ -27,6 +27,7 @@ cat > /workspace/my-sqlite.c << 'CEOF'
 #define MAX_TABLES 40
 #define MAX_COLS 16
 #define MAX_NAME 64
+#define NAME_LEN 31   /* max name chars storable in a 32-byte schema slot (NAME_LEN + NUL) */
 
 static uint8_t *g_buf = NULL;
 static long g_cap = 0;
@@ -134,7 +135,8 @@ static void write_schema_page(uint32_t pageno, int num_cols, char names[MAX_COLS
     u32w(p, (uint32_t)num_cols);
     for (int i = 0; i < num_cols; i++) {
         uint8_t *c = p + 4 + (uint32_t)i * 40;
-        strncpy((char *)c, names[i], MAX_NAME - 1);
+        strncpy((char *)c, names[i], NAME_LEN);
+        c[NAME_LEN] = 0;
         u32w(c + 32, types[i]);
     }
 }
@@ -150,7 +152,8 @@ static int create_table(const char *name, int num_cols, char names[MAX_COLS][MAX
     grow_to((long)(data_page + 1) * PAGE_SIZE);
     uint8_t *e = g_buf + 16 + (uint32_t)nt * 96;
     memset(e, 0, 96);
-    strncpy((char *)e, name, 31);
+    strncpy((char *)e, name, NAME_LEN);
+    e[NAME_LEN] = 0;
     u32w(e + 32, schema_page);
     u32w(e + 36, data_page);
     u32w(e + 40, (uint32_t)num_cols);
@@ -172,8 +175,8 @@ static int table_schema(int ti, int *num_cols, char names[MAX_COLS][MAX_NAME], u
     *num_cols = (int)u32r(p);
     for (int i = 0; i < *num_cols; i++) {
         uint8_t *c = p + 4 + (uint32_t)i * 40;
-        strncpy(names[i], (char *)c, MAX_NAME - 1);
-        names[i][MAX_NAME - 1] = 0;
+        strncpy(names[i], (char *)c, NAME_LEN);
+        names[i][NAME_LEN] = 0;
         types[i] = u32r(c + 32);
     }
     return 0;
