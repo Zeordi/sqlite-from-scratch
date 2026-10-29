@@ -1,89 +1,130 @@
 #!/bin/bash
-set -euo pipefail
+#
+# FrontierSWE/Harbor verifier for sqlite-from-scratch.
+# Builds the agent's submission, runs SQL checks against ./my-sqlite,
+# awards partial credit, and ALWAYS writes /logs/verifier/reward.txt.
+#
+set -uo pipefail
 
+REWARD_FILE=/logs/verifier/reward.txt
 SCORE=0.0
-MAX=1.0
 
-cd /workspace
+# Always write the reward file, even on early failure.
+write_reward() {
+    mkdir -p /logs/verifier
+    printf '%s\n' "$SCORE" > "$REWARD_FILE"
+}
+trap write_reward EXIT
 
-# --- Build ---
-if [ -f Makefile ]; then
-  make -j$(nproc) || exit 1
-elif [ -f Cargo.toml ]; then
-  cargo build --release || exit 1
-  cp target/release/my-sqlite ./my-sqlite || true
-elif [ -f go.mod ]; then
-  go build -o my-sqlite . || exit 1
-else
-  echo "No build system found"
-  exit 1
-fi
+cd /workspace || { echo "cannot cd /workspace"; exit 1; }
 
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
 BINARY=./my-sqlite
-if [ ! -x "$BINARY" ]; then
-  echo "Binary not found or not executable"
-  exit 1
-fi
 
-# Helper
-run_sql() {
-  local db=$1
-  local sql=$2
-  echo -e "$sql\n.exit" | timeout 10s $BINARY "$db" 2>/dev/null || true
+build() {
+    if [ -f Makefile ]; then
+        make -j"$(nproc)" >/tmp/build.log 2>&1 || { cat /tmp/build.log; return 1; }
+    elif [ -f Cargo.toml ]; then
+        cargo build --release >/tmp/build.log 2>&1 || { cat /tmp/build.log; return 1; }
+        cp target/release/my-sqlite ./my-sqlite 2>/dev/null || true
+    elif [ -f go.mod ]; then
+        go build -o my-sqlite . >/tmp/build.log 2>&1 || { cat /tmp/build.log; return 1; }
+    elif [ -x "$BINARY" ]; then
+        return 0
+    else
+        echo "No build system (Makefile/Cargo.toml/go.mod) and no executable my-sqlite"
+        return 1
+    fi
+    return 0
 }
 
-# Test 1: CREATE + INSERT + SELECT *  (0.4)
-rm -f test1.db
-run_sql test1.db "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);
+if ! build; then
+    echo "BUILD FAILED"
+    exit 1
+fi
+
+if [ ! -x "$BINARY" ]; then
+    echo "my-sqlite binary not found or not executable"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+WORK="$(mktemp -d)"
+
+run_sql() {
+    # $1 = db file name, $2 = SQL (single statement or multi-line script)
+    printf '%s\n.exit\n' "$2" | timeout 20s "$BINARY" "$WORK/$1" 2>/dev/null || true
+}
+
+assert_contains() {
+    # $1 = output file, $2 = expected substring, $3 = label
+    if grep -qF -- "$2" "$1"; then
+        echo "PASS: $3"
+        return 0
+    else
+        echo "FAIL: $3 (expected to contain: $2)"
+        return 1
+    fi
+}
+
+add_score() {
+    SCORE="$(awk -v a="$SCORE" -v b="$1" 'BEGIN{printf "%.2f", a+b}')"
+}
+
+# ---------------------------------------------------------------------------
+# Test 1: CREATE TABLE + INSERT + SELECT *  (0.25)
+# ---------------------------------------------------------------------------
+rm -f "$WORK/t1.db"
+run_sql t1.db "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT);
 INSERT INTO t VALUES (1, 'alice');
 INSERT INTO t VALUES (2, 'bob');
-SELECT * FROM t;" > out1.txt
+SELECT * FROM t;" > "$WORK/out1.txt"
 
-if grep -q "1|alice" out1.txt && grep -q "2|bob" out1.txt; then
-  SCORE=$(echo "$SCORE + 0.4" | bc)
-  echo "PASS: basic CREATE/INSERT/SELECT"
-else
-  echo "FAIL: basic CREATE/INSERT/SELECT"
+if assert_contains "$WORK/out1.txt" "1|alice" "test1: row 1" \
+  && assert_contains "$WORK/out1.txt" "2|bob" "test1: row 2"; then
+    add_score 0.25
 fi
 
-# Test 2: Persistence (0.2)
-run_sql test1.db "SELECT name FROM t WHERE id = 1;" > out2.txt
-if grep -q "alice" out2.txt; then
-  SCORE=$(echo "$SCORE + 0.2" | bc)
-  echo "PASS: persistence"
-else
-  echo "FAIL: persistence"
+# ---------------------------------------------------------------------------
+# Test 2: Persistence across process restart  (0.25)
+# Reopen the same db file from test 1 in a brand-new process.
+# ---------------------------------------------------------------------------
+run_sql t1.db "SELECT name FROM t WHERE id = 1;" > "$WORK/out2.txt"
+if assert_contains "$WORK/out2.txt" "alice" "test2: persistence"; then
+    add_score 0.25
 fi
 
-# Test 3: WHERE clause (0.2)
-run_sql test1.db "SELECT name FROM t WHERE id = 2;" > out3.txt
-if grep -q "bob" out3.txt; then
-  SCORE=$(echo "$SCORE + 0.2" | bc)
-  echo "PASS: WHERE"
-else
-  echo "FAIL: WHERE"
+# ---------------------------------------------------------------------------
+# Test 3: Simple WHERE (=) + column select  (0.25)
+# ---------------------------------------------------------------------------
+run_sql t1.db "SELECT name FROM t WHERE id = 2;" > "$WORK/out3.txt"
+if assert_contains "$WORK/out3.txt" "bob" "test3: WHERE id=2"; then
+    add_score 0.25
 fi
 
-# Test 4: Multiple tables (0.2)
-rm -f test4.db
-run_sql test4.db "CREATE TABLE a (id INTEGER PRIMARY KEY);
+# ---------------------------------------------------------------------------
+# Test 4: Multiple tables in one database file  (0.25)
+# ---------------------------------------------------------------------------
+rm -f "$WORK/t4.db"
+run_sql t4.db "CREATE TABLE a (id INTEGER PRIMARY KEY);
 CREATE TABLE b (id INTEGER PRIMARY KEY, val TEXT);
 INSERT INTO a VALUES (10);
 INSERT INTO b VALUES (10, 'hello');
 SELECT * FROM a;
-SELECT * FROM b;" > out4.txt
+SELECT * FROM b;" > "$WORK/out4.txt"
 
-if grep -q "10" out4.txt && grep -q "hello" out4.txt; then
-  SCORE=$(echo "$SCORE + 0.2" | bc)
-  echo "PASS: multiple tables"
-else
-  echo "FAIL: multiple tables"
+if assert_contains "$WORK/out4.txt" "10" "test4: table a" \
+  && assert_contains "$WORK/out4.txt" "hello" "test4: table b"; then
+    add_score 0.25
 fi
 
-# Final score
+# ---------------------------------------------------------------------------
+# Final
+# ---------------------------------------------------------------------------
+rm -rf "$WORK"
 echo "Final score: $SCORE"
-mkdir -p /logs/verifier
-echo "$SCORE" > /logs/verifier/reward.txt
-
-# Harbor expects Mean printed
 echo "Mean: $SCORE"
