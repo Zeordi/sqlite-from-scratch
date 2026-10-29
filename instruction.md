@@ -28,3 +28,13 @@ Your program must be a command-line tool that:
 4. Exits cleanly on `EOF` or `.exit`
 
 Example interaction:
+$ ./my-sqlite test.db
+sqlite> CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+sqlite> INSERT INTO users VALUES (1, 'Alice');
+sqlite> INSERT INTO users VALUES (2, 'Bob');
+sqlite> SELECT * FROM users;
+1|Alice
+2|Bob
+sqlite> SELECT name FROM users WHERE id = 2;
+Bob
+sqlite> .exit
