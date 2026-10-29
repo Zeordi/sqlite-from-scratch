@@ -1,0 +1,18 @@
+version = "1.0"
+
+[metadata]
+author = "Abel Alemayehu"
+name = "agent-sandbox-escape"
+category = "cybersecurity"
+difficulty = "hard"
+estimated_hours = 5
+
+[agent]
+timeout_minutes = 600
+max_steps = 300
+
+[verifier]
+timeout_minutes = 15
+
+[environment]
+build = "none"
