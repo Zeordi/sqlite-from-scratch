@@ -1,4 +1,6 @@
+*.db
 __pycache__/
-*.pyc
-/tmp/
-solution.py
+target/
+*.o
+my-sqlite
+out*.txt
