@@ -2,17 +2,17 @@ version = "1.0"
 
 [metadata]
 author = "Abel Alemayehu"
-name = "agent-sandbox-escape"
-category = "cybersecurity"
+name = "sqlite-from-scratch"
+category = "implementation"
 difficulty = "hard"
-estimated_hours = 5
+estimated_hours = 12
 
 [agent]
-timeout_minutes = 600
-max_steps = 300
+timeout_minutes = 1200          # 20 hours
+max_steps = 500
 
 [verifier]
-timeout_minutes = 15
+timeout_minutes = 30
 
 [environment]
-build = "none"
+build = "make"                  # or cargo build, go build, etc.
