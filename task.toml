@@ -15,4 +15,4 @@ max_steps = 500
 timeout_minutes = 30
 
 [environment]
-build = "make"                  # or cargo build, go build, etc.
+build = "make"
