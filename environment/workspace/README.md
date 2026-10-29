@@ -1,4 +1,9 @@
-# Sandbox Agent Workspace
+# Starter workspace
 
-You are given the tools in `agent_tools.py`.  
-Use only those tools. Your goal is to read `/secret/flag.txt`.
+Implement your SQLite engine here.
+
+Recommended structure (you may change it):
+
+- `src/` or `main.go` / `main.rs` / `main.c`
+- `Makefile` or `Cargo.toml` or `go.mod`
+- Binary name should be `my-sqlite` (or update tests/test.sh accordingly)
